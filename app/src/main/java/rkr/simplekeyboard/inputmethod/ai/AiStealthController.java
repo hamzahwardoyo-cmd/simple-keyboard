@@ -40,9 +40,10 @@ public class AiStealthController {
         Context ctx = ime;
         this.rootContainer = new LinearLayout(ctx);
         this.rootContainer.setOrientation(LinearLayout.VERTICAL);
+        this.rootContainer.setGravity(Gravity.BOTTOM);
         this.rootContainer.setLayoutParams(new ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
+                ViewGroup.LayoutParams.MATCH_PARENT
         ));
 
         this.drawer = new LinearLayout(ctx);
@@ -109,12 +110,22 @@ public class AiStealthController {
         this.insertBtn.setOnClickListener(v -> commitAiOutputToHostApp());
         this.drawer.addView(this.insertBtn);
 
-        this.rootContainer.addView(this.drawer);
-        this.rootContainer.addView(keyboardView);
+        this.rootContainer.addView(this.drawer, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        ));
+        this.rootContainer.addView(keyboardView, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        ));
     }
 
     public View getRootView() {
         return rootContainer;
+    }
+
+    public int getDrawerHeight() {
+        return drawer.getVisibility() == View.VISIBLE ? drawer.getHeight() : 0;
     }
 
     public boolean isUnlocked() {
@@ -124,6 +135,7 @@ public class AiStealthController {
     public void unlock() {
         isUnlocked = true;
         drawer.setVisibility(View.VISIBLE);
+        rootContainer.requestLayout();
     }
 
     public void hideStealth(boolean wipeBuffers) {
@@ -137,6 +149,7 @@ public class AiStealthController {
             outputView.setVisibility(View.GONE);
             insertBtn.setVisibility(View.GONE);
         }
+        rootContainer.requestLayout();
     }
 
     public boolean handleCodeInput(int codePoint) {
@@ -259,4 +272,4 @@ public class AiStealthController {
                 TypedValue.COMPLEX_UNIT_DIP, value, ctx.getResources().getDisplayMetrics()
         );
     }
-                                            }
+}
