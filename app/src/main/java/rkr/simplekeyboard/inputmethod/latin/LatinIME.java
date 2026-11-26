@@ -556,7 +556,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             outInsets.visibleTopInsets = inputHeight;
             return;
         }
-        final int visibleTopY = inputHeight - visibleKeyboardView.getHeight();
+        final int aiHeight = (mAiController != null) ? mAiController.getDrawerHeight() : 0;
+        final int visibleTopY = inputHeight - (visibleKeyboardView.getHeight() + aiHeight);
         // Need to set expanded touchable region only if a keyboard view is being shown.
         if (visibleKeyboardView.isShown()) {
             final int touchLeft = 0;
@@ -862,7 +863,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     }
 
     // Callback of the {@link KeyboardActionListener}. This is called when a key is released;
-    // press matching call is {@link #onReleaseKey(int,int,boolean)} above.
+    // press matching call is {@link #onPressKey(int,int,boolean)} above.
     @Override
     public void onReleaseKey(final int primaryCode, final boolean withSliding) {
         mKeyboardSwitcher.onReleaseKey(primaryCode, withSliding, getCurrentAutoCapsState(),
