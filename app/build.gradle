@@ -1,6 +1,10 @@
 apply plugin: 'com.android.application'
 
 android {
+    buildFeatures {
+        buildConfig true
+    }
+
     defaultConfig {
         applicationId "rkr.simplekeyboard.inputmethod"
         compileSdk 37
@@ -8,6 +12,9 @@ android {
         targetSdkVersion 37
         versionCode 149
         versionName "6.8"
+
+        def geminiKey = System.getenv("GEMINI_API_KEY") ?: ""
+        buildConfigField "String", "GEMINI_API_KEY", "\"${geminiKey}\""
     }
     buildTypes {
         release {
