@@ -19,8 +19,15 @@ import java.util.concurrent.Executors;
 import rkr.simplekeyboard.inputmethod.BuildConfig;
 
 public class GeminiImeClient {
-    private static final String GEMINI_STREAM_URL =
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:streamGenerateContent?alt=sse&key=";
+    private static final String BASE_API_URL =
+            "https://generativelanguage.googleapis.com/v1beta/models/";
+
+    // Urutan prioritas model: coba gemini-3.8-flash 2x, jika 503 lanjut ke gemini-4-hydrogen
+    private static final String[] MODEL_CANDIDATES = new String[] {
+            "gemini-3.8-flash",
+            "gemini-3.8-flash",
+            "gemini-4-hydrogen"
+    };
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -43,73 +50,96 @@ public class GeminiImeClient {
                 return;
             }
 
-            StringBuilder fullResponse = new StringBuilder();
-            HttpURLConnection conn = null;
-            try {
-                String systemText = buildSystemInstruction(action);
-                String userText = buildUserMessage(action, prompt, editorText);
+            String systemText = buildSystemInstruction(action);
+            String userText = buildUserMessage(action, prompt, editorText);
+            String lastError = "Network error";
 
-                JSONObject body = new JSONObject();
-                body.put("systemInstruction", new JSONObject().put("parts",
-                        new JSONArray().put(new JSONObject().put("text", systemText))));
-                body.put("contents", new JSONArray().put(
-                        new JSONObject()
-                                .put("role", "user")
-                                .put("parts", new JSONArray().put(new JSONObject().put("text", userText)))
-                ));
+            for (int attempt = 0; attempt < MODEL_CANDIDATES.length; attempt++) {
+                String modelName = MODEL_CANDIDATES[attempt];
+                StringBuilder fullResponse = new StringBuilder();
+                HttpURLConnection conn = null;
 
-                URL url = new URL(GEMINI_STREAM_URL + apiKey.trim());
-                conn = (HttpURLConnection) url.openConnection();
-                conn.setRequestMethod("POST");
-                conn.setConnectTimeout(10000);
-                conn.setReadTimeout(30000);
-                conn.setDoOutput(true);
-                conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+                try {
+                    JSONObject body = new JSONObject();
+                    body.put("systemInstruction", new JSONObject().put("parts",
+                            new JSONArray().put(new JSONObject().put("text", systemText))));
+                    body.put("contents", new JSONArray().put(
+                            new JSONObject()
+                                    .put("role", "user")
+                                    .put("parts", new JSONArray().put(new JSONObject().put("text", userText)))
+                    ));
 
-                try (OutputStream os = conn.getOutputStream()) {
-                    os.write(body.toString().getBytes(StandardCharsets.UTF_8));
-                }
+                    String endpoint = BASE_API_URL + modelName + ":streamGenerateContent?alt=sse&key=" + apiKey.trim();
+                    URL url = new URL(endpoint);
+                    conn = (HttpURLConnection) url.openConnection();
+                    conn.setRequestMethod("POST");
+                    conn.setConnectTimeout(10000);
+                    conn.setReadTimeout(30000);
+                    conn.setDoOutput(true);
+                    conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
 
-                int code = conn.getResponseCode();
-                if (code < 200 || code >= 300) {
-                    String errBody = readStream(conn.getErrorStream());
-                    postError(callback, "HTTP " + code + (errBody.isEmpty() ? "" : ": " + errBody));
-                    return;
-                }
+                    try (OutputStream os = conn.getOutputStream()) {
+                        os.write(body.toString().getBytes(StandardCharsets.UTF_8));
+                    }
 
-                BufferedReader reader = new BufferedReader(
-                        new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8)
-                );
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    if (line.startsWith("data: ")) {
-                        String jsonStr = line.substring(6).trim();
-                        if (jsonStr.isEmpty() || "[DONE]".equals(jsonStr)) continue;
-                        JSONObject data = new JSONObject(jsonStr);
-                        JSONArray candidates = data.optJSONArray("candidates");
-                        if (candidates == null || candidates.length() == 0) continue;
-                        JSONObject content = candidates.optJSONObject(0).optJSONObject("content");
-                        if (content == null) continue;
-                        JSONArray parts = content.optJSONArray("parts");
-                        if (parts == null) continue;
-                        for (int i = 0; i < parts.length(); i++) {
-                            String chunk = parts.optJSONObject(i).optString("text", "");
-                            if (!chunk.isEmpty()) {
-                                fullResponse.append(chunk);
-                                mainHandler.post(() -> callback.onToken(chunk));
+                    int code = conn.getResponseCode();
+                    if (code < 200 || code >= 300) {
+                        String errBody = readStream(conn.getErrorStream());
+                        lastError = "HTTP " + code + " (" + modelName + ")" + (errBody.isEmpty() ? "" : ": " + errBody);
+
+                        // Jika server sibuk (503/429) atau model fallback tidak ditemukan (404), coba kandidat berikutnya
+                        if ((code == 503 || code == 429 || code == 404) && attempt < MODEL_CANDIDATES.length - 1) {
+                            Thread.sleep(800);
+                            continue;
+                        }
+                        postError(callback, lastError);
+                        return;
+                    }
+
+                    BufferedReader reader = new BufferedReader(
+                            new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8)
+                    );
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        if (line.startsWith("data: ")) {
+                            String jsonStr = line.substring(6).trim();
+                            if (jsonStr.isEmpty() || "[DONE]".equals(jsonStr)) continue;
+                            JSONObject data = new JSONObject(jsonStr);
+                            JSONArray candidates = data.optJSONArray("candidates");
+                            if (candidates == null || candidates.length() == 0) continue;
+                            JSONObject content = candidates.optJSONObject(0).optJSONObject("content");
+                            if (content == null) continue;
+                            JSONArray parts = content.optJSONArray("parts");
+                            if (parts == null) continue;
+                            for (int i = 0; i < parts.length(); i++) {
+                                String chunk = parts.optJSONObject(i).optString("text", "");
+                                if (!chunk.isEmpty()) {
+                                    fullResponse.append(chunk);
+                                    mainHandler.post(() -> callback.onToken(chunk));
+                                }
                             }
                         }
                     }
-                }
-                String finalText = fullResponse.toString();
-                mainHandler.post(() -> callback.onComplete(finalText));
-            } catch (Exception e) {
-                postError(callback, e.getMessage() != null ? e.getMessage() : "Network error");
-            } finally {
-                if (conn != null) {
-                    conn.disconnect();
+
+                    String finalText = fullResponse.toString();
+                    mainHandler.post(() -> callback.onComplete(finalText));
+                    return; // Berhasil, keluar dari loop retry
+                } catch (Exception e) {
+                    lastError = e.getMessage() != null ? e.getMessage() : "Network error";
+                    if (attempt < MODEL_CANDIDATES.length - 1) {
+                        try {
+                            Thread.sleep(800);
+                        } catch (InterruptedException ignored) {}
+                        continue;
+                    }
+                } finally {
+                    if (conn != null) {
+                        conn.disconnect();
+                    }
                 }
             }
+
+            postError(callback, lastError);
         });
     }
 
