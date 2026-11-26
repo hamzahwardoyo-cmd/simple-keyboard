@@ -13,8 +13,8 @@ android {
         versionCode 149
         versionName "6.8"
 
-        def geminiKey = System.getenv("GEMINI_API_KEY") ?: ""
-        buildConfigField "String", "GEMINI_API_KEY", "\"${geminiKey}\""
+        def orKey = System.getenv("OPENROUTER_API_KEY") ?: ""
+        buildConfigField "String", "OPENROUTER_API_KEY", "\"${orKey}\""
     }
     buildTypes {
         release {
