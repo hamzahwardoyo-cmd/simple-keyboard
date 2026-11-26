@@ -20,7 +20,7 @@ import rkr.simplekeyboard.inputmethod.BuildConfig;
 
 public class GeminiImeClient {
     private static final String GEMINI_STREAM_URL =
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse&key=";
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:streamGenerateContent?alt=sse&key=";
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -57,8 +57,6 @@ public class GeminiImeClient {
                                 .put("role", "user")
                                 .put("parts", new JSONArray().put(new JSONObject().put("text", userText)))
                 ));
-                body.put("generationConfig", new JSONObject()
-                        .put("thinkingConfig", new JSONObject().put("thinkingBudget", 0)));
 
                 URL url = new URL(GEMINI_STREAM_URL + apiKey.trim());
                 conn = (HttpURLConnection) url.openConnection();
