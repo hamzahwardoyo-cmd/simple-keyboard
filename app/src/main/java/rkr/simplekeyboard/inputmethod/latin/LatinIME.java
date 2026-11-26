@@ -323,8 +323,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     @Override
     public View onCreateInputView() {
         final View keyboardView = mKeyboardSwitcher.onCreateInputView();
-        final String backendEndpoint = "https://ais-pre-pkylzsud3z7ejokdsyesnm-931440695501.asia-northeast1.run.app/api/ai/stream";
-        mAiController = new AiStealthController(this, keyboardView, backendEndpoint);
+        mAiController = new AiStealthController(this, keyboardView, "");
         return mAiController.getRootView();
     }
 
@@ -863,7 +862,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     }
 
     // Callback of the {@link KeyboardActionListener}. This is called when a key is released;
-    // press matching call is {@link #onPressKey(int,int,boolean)} above.
+    // press matching call is {@link #onReleaseKey(int,int,boolean)} above.
     @Override
     public void onReleaseKey(final int primaryCode, final boolean withSliding) {
         mKeyboardSwitcher.onReleaseKey(primaryCode, withSliding, getCurrentAutoCapsState(),
