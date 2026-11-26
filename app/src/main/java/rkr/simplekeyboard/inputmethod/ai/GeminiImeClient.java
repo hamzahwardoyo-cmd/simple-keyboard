@@ -19,14 +19,12 @@ import java.util.concurrent.Executors;
 import rkr.simplekeyboard.inputmethod.BuildConfig;
 
 public class GeminiImeClient {
-    private static final String BASE_API_URL =
-            "https://generativelanguage.googleapis.com/v1beta/models/";
+    private static final String OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 
-    // Urutan prioritas model: coba gemini-3.8-flash 2x, jika 503 lanjut ke gemini-4-hydrogen
     private static final String[] MODEL_CANDIDATES = new String[] {
-            "gemini-3.8-flash",
-            "gemini-3.8-flash",
-            "gemini-4-hydrogen"
+            "openrouter/free",
+            "meta-llama/llama-3.3-70b-instruct:free",
+            "google/gemma-3-27b-it:free"
     };
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -39,14 +37,14 @@ public class GeminiImeClient {
     }
 
     public GeminiImeClient(String ignoredEndpointUrl) {
-        // Uses BuildConfig.GEMINI_API_KEY injected via GitHub Actions Secrets
+        // Uses BuildConfig.OPENROUTER_API_KEY injected via GitHub Actions Secrets
     }
 
     public void streamAction(String prompt, String editorText, String action, StreamCallback callback) {
         executor.execute(() -> {
-            String apiKey = BuildConfig.GEMINI_API_KEY;
+            String apiKey = BuildConfig.OPENROUTER_API_KEY;
             if (apiKey == null || apiKey.trim().isEmpty()) {
-                postError(callback, "GEMINI_API_KEY belum diisi di GitHub Secrets.");
+                postError(callback, "OPENROUTER_API_KEY belum diisi di GitHub Secrets.");
                 return;
             }
 
@@ -60,23 +58,25 @@ public class GeminiImeClient {
                 HttpURLConnection conn = null;
 
                 try {
-                    JSONObject body = new JSONObject();
-                    body.put("systemInstruction", new JSONObject().put("parts",
-                            new JSONArray().put(new JSONObject().put("text", systemText))));
-                    body.put("contents", new JSONArray().put(
-                            new JSONObject()
-                                    .put("role", "user")
-                                    .put("parts", new JSONArray().put(new JSONObject().put("text", userText)))
-                    ));
+                    JSONArray messages = new JSONArray();
+                    messages.put(new JSONObject().put("role", "system").put("content", systemText));
+                    messages.put(new JSONObject().put("role", "user").put("content", userText));
 
-                    String endpoint = BASE_API_URL + modelName + ":streamGenerateContent?alt=sse&key=" + apiKey.trim();
-                    URL url = new URL(endpoint);
+                    JSONObject body = new JSONObject();
+                    body.put("model", modelName);
+                    body.put("messages", messages);
+                    body.put("stream", true);
+
+                    URL url = new URL(OPENROUTER_API_URL);
                     conn = (HttpURLConnection) url.openConnection();
                     conn.setRequestMethod("POST");
                     conn.setConnectTimeout(10000);
                     conn.setReadTimeout(30000);
                     conn.setDoOutput(true);
                     conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+                    conn.setRequestProperty("Authorization", "Bearer " + apiKey.trim());
+                    conn.setRequestProperty("HTTP-Referer", "https://github.com/hamzahwardoyo-cmd/simple-keyboard");
+                    conn.setRequestProperty("X-Title", "Simple Keyboard AI");
 
                     try (OutputStream os = conn.getOutputStream()) {
                         os.write(body.toString().getBytes(StandardCharsets.UTF_8));
@@ -86,10 +86,8 @@ public class GeminiImeClient {
                     if (code < 200 || code >= 300) {
                         String errBody = readStream(conn.getErrorStream());
                         lastError = "HTTP " + code + " (" + modelName + ")" + (errBody.isEmpty() ? "" : ": " + errBody);
-
-                        // Jika server sibuk (503/429) atau model fallback tidak ditemukan (404), coba kandidat berikutnya
                         if ((code == 503 || code == 429 || code == 404) && attempt < MODEL_CANDIDATES.length - 1) {
-                            Thread.sleep(800);
+                            Thread.sleep(600);
                             continue;
                         }
                         postError(callback, lastError);
@@ -105,30 +103,26 @@ public class GeminiImeClient {
                             String jsonStr = line.substring(6).trim();
                             if (jsonStr.isEmpty() || "[DONE]".equals(jsonStr)) continue;
                             JSONObject data = new JSONObject(jsonStr);
-                            JSONArray candidates = data.optJSONArray("candidates");
-                            if (candidates == null || candidates.length() == 0) continue;
-                            JSONObject content = candidates.optJSONObject(0).optJSONObject("content");
-                            if (content == null) continue;
-                            JSONArray parts = content.optJSONArray("parts");
-                            if (parts == null) continue;
-                            for (int i = 0; i < parts.length(); i++) {
-                                String chunk = parts.optJSONObject(i).optString("text", "");
-                                if (!chunk.isEmpty()) {
-                                    fullResponse.append(chunk);
-                                    mainHandler.post(() -> callback.onToken(chunk));
-                                }
+                            JSONArray choices = data.optJSONArray("choices");
+                            if (choices == null || choices.length() == 0) continue;
+                            JSONObject delta = choices.optJSONObject(0).optJSONObject("delta");
+                            if (delta == null) continue;
+                            String chunk = delta.optString("content", "");
+                            if (!chunk.isEmpty()) {
+                                fullResponse.append(chunk);
+                                mainHandler.post(() -> callback.onToken(chunk));
                             }
                         }
                     }
 
                     String finalText = fullResponse.toString();
                     mainHandler.post(() -> callback.onComplete(finalText));
-                    return; // Berhasil, keluar dari loop retry
+                    return;
                 } catch (Exception e) {
                     lastError = e.getMessage() != null ? e.getMessage() : "Network error";
                     if (attempt < MODEL_CANDIDATES.length - 1) {
                         try {
-                            Thread.sleep(800);
+                            Thread.sleep(600);
                         } catch (InterruptedException ignored) {}
                         continue;
                     }
