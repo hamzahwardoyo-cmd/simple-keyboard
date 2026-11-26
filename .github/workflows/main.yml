@@ -24,7 +24,7 @@ jobs:
         with:
           gradle-version: '9.6.0'
 
-      - name: Accept Android SDK licenses
+      - name: Accept Android SDK Licenses
         run: |
           if [ -d "$ANDROID_HOME/cmdline-tools/latest/bin" ]; then
             yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null 2>&1 || true
@@ -32,7 +32,7 @@ jobs:
 
       - name: Build Debug APK
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: gradle assembleDebug --stacktrace
 
       - name: Upload APK artifact
