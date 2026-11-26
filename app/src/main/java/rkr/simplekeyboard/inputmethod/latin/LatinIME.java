@@ -21,6 +21,7 @@
 
 package rkr.simplekeyboard.inputmethod.latin;
 
+import rkr.simplekeyboard.inputmethod.ai.AiStealthController;
 import android.app.AlertDialog;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -91,6 +92,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
 
     // TODO: Move these {@link View}s to {@link KeyboardSwitcher}.
     private View mInputView;
+    private AiStealthController mAiController;
 
     private RichInputMethodManager mRichImm;
     final KeyboardSwitcher mKeyboardSwitcher;
@@ -320,7 +322,10 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
 
     @Override
     public View onCreateInputView() {
-        return mKeyboardSwitcher.onCreateInputView();
+        final View keyboardView = mKeyboardSwitcher.onCreateInputView();
+        final String backendEndpoint = "https://ais-pre-pkylzsud3z7ejokdsyesnm-931440695501.asia-northeast1.run.app/api/ai/stream";
+        mAiController = new AiStealthController(this, keyboardView, backendEndpoint);
+        return mAiController.getRootView();
     }
 
     @Override
@@ -351,6 +356,9 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         mInputLogic.clearCaches();
         mRichImm.resetSubtypeCycleOrder();
         mHandler.onFinishInputView(finishingInput);
+        if (mAiController != null) {
+            mAiController.hideStealth(false);
+        }
     }
 
     @Override
@@ -729,6 +737,9 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     @Override
     public void onCodeInput(final int codePoint, final int x, final int y,
             final boolean isKeyRepeat) {
+        if (mAiController != null && mAiController.handleCodeInput(codePoint)) {
+            return;
+        }
         final Event event = createSoftwareKeypressEvent(getCodePointForKeyboard(codePoint), isKeyRepeat);
         onEvent(event);
     }
@@ -851,7 +862,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     }
 
     // Callback of the {@link KeyboardActionListener}. This is called when a key is released;
-    // press matching call is {@link #onPressKey(int,int,boolean)} above.
+    // press matching call is {@link #onReleaseKey(int,int,boolean)} above.
     @Override
     public void onReleaseKey(final int primaryCode, final boolean withSliding) {
         mKeyboardSwitcher.onReleaseKey(primaryCode, withSliding, getCurrentAutoCapsState(),
