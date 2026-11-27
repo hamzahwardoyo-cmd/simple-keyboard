@@ -23,8 +23,9 @@ public class GeminiImeClient {
 
     private static final String[] MODEL_CANDIDATES = new String[] {
             "openrouter/free",
-            "meta-llama/llama-3.3-70b-instruct:free",
-            "google/gemma-3-27b-it:free"
+            "openrouter/free",
+            "qwen/qwen3-next-80b-a3b-instruct:free",
+            "openrouter/free"
     };
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -86,8 +87,8 @@ public class GeminiImeClient {
                     if (code < 200 || code >= 300) {
                         String errBody = readStream(conn.getErrorStream());
                         lastError = "HTTP " + code + " (" + modelName + ")" + (errBody.isEmpty() ? "" : ": " + errBody);
-                        if ((code == 503 || code == 429 || code == 404) && attempt < MODEL_CANDIDATES.length - 1) {
-                            Thread.sleep(600);
+                        if ((code == 503 || code == 429 || code == 404 || code == 502) && attempt < MODEL_CANDIDATES.length - 1) {
+                            Thread.sleep(1000);
                             continue;
                         }
                         postError(callback, lastError);
@@ -122,7 +123,7 @@ public class GeminiImeClient {
                     lastError = e.getMessage() != null ? e.getMessage() : "Network error";
                     if (attempt < MODEL_CANDIDATES.length - 1) {
                         try {
-                            Thread.sleep(600);
+                            Thread.sleep(1000);
                         } catch (InterruptedException ignored) {}
                         continue;
                     }
