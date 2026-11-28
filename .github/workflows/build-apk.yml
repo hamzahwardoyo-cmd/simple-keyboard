@@ -32,7 +32,8 @@ jobs:
 
       - name: Build Debug APK
         env:
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
         run: gradle assembleDebug --stacktrace
 
       - name: Upload APK artifact
