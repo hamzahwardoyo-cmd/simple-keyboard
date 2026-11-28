@@ -19,13 +19,9 @@ import java.util.concurrent.Executors;
 import rkr.simplekeyboard.inputmethod.BuildConfig;
 
 public class GeminiImeClient {
-    private static final String OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
-
     private static final String[] MODEL_CANDIDATES = new String[] {
-            "openrouter/free",
-            "openrouter/free",
-            "qwen/qwen3-next-80b-a3b-instruct:free",
-            "openrouter/free"
+            "@cf/meta/llama-3.1-8b-instruct-fast",
+            "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
     };
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -38,16 +34,20 @@ public class GeminiImeClient {
     }
 
     public GeminiImeClient(String ignoredEndpointUrl) {
-        // Uses BuildConfig.OPENROUTER_API_KEY injected via GitHub Actions Secrets
+        // Uses BuildConfig.CF_ACCOUNT_ID and BuildConfig.CF_API_TOKEN
     }
 
     public void streamAction(String prompt, String editorText, String action, StreamCallback callback) {
         executor.execute(() -> {
-            String apiKey = BuildConfig.OPENROUTER_API_KEY;
-            if (apiKey == null || apiKey.trim().isEmpty()) {
-                postError(callback, "OPENROUTER_API_KEY belum diisi di GitHub Secrets.");
+            String accountId = BuildConfig.CF_ACCOUNT_ID;
+            String apiToken = BuildConfig.CF_API_TOKEN;
+            if (accountId == null || accountId.trim().isEmpty() || apiToken == null || apiToken.trim().isEmpty()) {
+                postError(callback, "CF_ACCOUNT_ID atau CF_API_TOKEN belum diisi di GitHub Secrets.");
                 return;
             }
+
+            String endpointUrl = "https://api.cloudflare.com/client/v4/accounts/"
+                    + accountId.trim() + "/ai/v1/chat/completions";
 
             String systemText = buildSystemInstruction(action);
             String userText = buildUserMessage(action, prompt, editorText);
@@ -68,16 +68,14 @@ public class GeminiImeClient {
                     body.put("messages", messages);
                     body.put("stream", true);
 
-                    URL url = new URL(OPENROUTER_API_URL);
+                    URL url = new URL(endpointUrl);
                     conn = (HttpURLConnection) url.openConnection();
                     conn.setRequestMethod("POST");
                     conn.setConnectTimeout(10000);
                     conn.setReadTimeout(30000);
                     conn.setDoOutput(true);
                     conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-                    conn.setRequestProperty("Authorization", "Bearer " + apiKey.trim());
-                    conn.setRequestProperty("HTTP-Referer", "https://github.com/hamzahwardoyo-cmd/simple-keyboard");
-                    conn.setRequestProperty("X-Title", "Simple Keyboard AI");
+                    conn.setRequestProperty("Authorization", "Bearer " + apiToken.trim());
 
                     try (OutputStream os = conn.getOutputStream()) {
                         os.write(body.toString().getBytes(StandardCharsets.UTF_8));
@@ -87,8 +85,8 @@ public class GeminiImeClient {
                     if (code < 200 || code >= 300) {
                         String errBody = readStream(conn.getErrorStream());
                         lastError = "HTTP " + code + " (" + modelName + ")" + (errBody.isEmpty() ? "" : ": " + errBody);
-                        if ((code == 503 || code == 429 || code == 404 || code == 502) && attempt < MODEL_CANDIDATES.length - 1) {
-                            Thread.sleep(1000);
+                        if ((code == 503 || code == 429 || code == 502) && attempt < MODEL_CANDIDATES.length - 1) {
+                            Thread.sleep(600);
                             continue;
                         }
                         postError(callback, lastError);
@@ -123,7 +121,7 @@ public class GeminiImeClient {
                     lastError = e.getMessage() != null ? e.getMessage() : "Network error";
                     if (attempt < MODEL_CANDIDATES.length - 1) {
                         try {
-                            Thread.sleep(1000);
+                            Thread.sleep(600);
                         } catch (InterruptedException ignored) {}
                         continue;
                     }
