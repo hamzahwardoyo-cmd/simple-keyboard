@@ -13,8 +13,10 @@ android {
         versionCode 149
         versionName "6.8"
 
-        def orKey = System.getenv("OPENROUTER_API_KEY") ?: ""
-        buildConfigField "String", "OPENROUTER_API_KEY", "\"${orKey}\""
+        def cfAccountId = System.getenv("CF_ACCOUNT_ID") ?: ""
+        def cfApiToken = System.getenv("CF_API_TOKEN") ?: ""
+        buildConfigField "String", "CF_ACCOUNT_ID", "\"${cfAccountId}\""
+        buildConfigField "String", "CF_API_TOKEN", "\"${cfApiToken}\""
     }
     buildTypes {
         release {
